@@ -1,0 +1,99 @@
+---
+title: "KNN"
+output: html_document
+---
+
+This is a snippet of k-nearest neighbors (KNN) algorithm for diabetes prediction.
+The dataset is  originally from the National Institute of Diabetes and Digestive and Kidney Diseases. All patients are females at least 21 years of age, and are of Pima Indian heritage.
+
+```{r setup, warning = FALSE, message = FALSE, include=FALSE}
+
+library(dplyr)
+```
+
+Importing the Dataset
+```{r}
+dbts<-read.csv("diabetes.csv")
+dbts$Outcome<-as.factor(dbts$Outcome)
+
+# Preview of diabetes.csv dataset
+head(dbts)
+```
+
+For this analysis, the columns to be used are BloodPressure, SkinThickness, BMI and Outcome.
+
+```{r}
+dbts_1 <- dbts %>% select(BloodPressure, SkinThickness, BMI, Outcome)
+
+str(dbts_1)
+summary(dbts_1)
+```
+This subset has 768 observations and 4 variables.
+
+From the summary above, we see that the minimum value for the variables is 0, which do not make sense for measurements of BloodPressure, SkinThickness, and BMI. These may be missing values where measurements were misread or not taken. We will filter these out.
+
+```{r}
+dbts_2 <- dbts_1 %>% filter(BloodPressure !=0 & SkinThickness != 0 & BMI != 0)
+dim(dbts_2)
+nrow(dbts_1)-nrow(dbts_2)
+```
+768 - 537 = 231 observations were removed. The remaining dataset has 537 observations.   
+
+The dataset is then split into a 85:15 ratio of training and test dataset in order to run the k-nearest neighbours algorithm.
+
+```{r}
+library(caret) # preprocessing
+library(class) # to run knn
+
+# Creating vector of random numbers equal to 85% of total number of rows
+set.seed(1234)
+ran <- sample(1:nrow(dbts_2),0.85 * nrow(dbts_2))
+
+# Creating normalization function
+nor <-function(x) { (x-min(x))/(max(x)-min(x)) }
+
+# Applying normalization function
+dbts_nor <- as.data.frame(lapply(dbts_2[,c(1,2,3)], nor))
+
+# Subsetting a training dataset 
+dbts_train <- dbts_nor[ran,]
+
+# Subsetting a test dataset 
+dbts_test <- dbts_nor[-ran,]
+
+# Defining target columns
+train_target <- as.factor(dbts_2[ran,4])
+test_target <- as.factor(dbts_2[-ran,4])
+
+```
+
+Using the *class* library's **knn** function, we apply the knn algorithm on the dataset.
+
+```{r}
+# Assigns classification to each row in test set
+dbts_knn <- knn(dbts_train, dbts_test, cl=train_target, k=3)
+# k=3 selected so only 3 nearest neighbors are considered for classfication 
+
+summary(dbts_knn)
+```
+Based on the summary, about 66 records are classified as '0' (the target value) in the testing dataset.
+
+```{r}
+# Creating the confusion matrix to identify true and false positives and negatives obtained by the algorithm
+dbts_cmatrix <- confusionMatrix(dbts_knn, test_target)
+dbts_cmatrix
+
+```
+The target '0' is selected as the positive class.  
+The accuracy of this k-nearest neighbors method is not as strong as it is only at around 69.14% accuracy.     
+From the prediction, 20 were classified as False Positive, 5 as False Negative.    
+  
+Sensitivity quantifies how many of the actual target 0 are correctly predicted as target 0.  
+Hence, the k-nearest neighbors method is quite sensitive for this dataset, at 90.38% sensitivity.
+
+Positive predictive value is the probability that people with a positive test '0' truly have the disease.    
+Hence, only 70.15% of people classified as having diabetes truly have diabetes.  
+
+Similarly, Negative predictive value is the probability that people with a negative test '1' truly do not have the disease.     
+Hence, 64.29% of people classified as not having diabetes truly do not have diabetes.   
+
