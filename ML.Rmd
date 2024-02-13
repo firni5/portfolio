@@ -1,0 +1,154 @@
+---
+title: "ML"
+output: html_document
+---
+
+This is a snippet of using machine learning  techniques to approve or reject a loan. The dataset is originally from the Lending Club.
+
+### Data Preprocessing
+
+```{r include=FALSE}
+
+library(caret)
+library(dplyr)
+library(rpart.plot)
+library(gbm)
+library(randomForest)
+```
+
+
+##### Data importing and preprocessing
+```{r}
+
+loan <- read.csv("loan_data.csv")
+
+# View dataset structure
+str(loan)
+
+# Changing nominal or binary character variables to 'factors'
+loan <- loan %>% mutate_if(is.character,as.factor)
+loan[,c('Credit_History')] <- as.factor(loan[,c('Credit_History')])
+loan[,c('Loan_Amount_Term')] <- as.factor(loan[,c('Loan_Amount_Term')])
+
+# Rows with blank values are changed to NA
+loan[loan == ' '] <- NA
+
+# Keeping only rows with no missing cases
+loan<-loan[complete.cases(loan),]
+
+# Dropping unused Levels from factors
+loan <- droplevels(loan) 
+
+# Removing ID column, not needed in analysis
+loan<-loan[,-1]
+
+# Summary of final dataset to be used
+summary(loan)
+
+# Dimension of dataset
+dim(loan)
+
+```
+From the summary of the dataset structure, some of the variables are characters. Hence, they are changed into factors to allow further data analysis. The original dataset contains 614 observations and 13 variables. After cleaning, the dataset has 480 observations and 12 variables.\
+
+### Descriptive Analytics and Exploratory Data Analytics
+  
+From the summary above, the data shows that around 85.42% applicants have a good history of paying back previous loans under the variable ***Credit_History***.\   
+
+Generally, it can be hypothesized that applicants with a high income and a good history of paying back previous loans have a higher chance of being approved for their loan application.\
+
+##### Applicant Income vs Loan Amount by Credit History
+```{r}
+ggplot(loan, aes(ApplicantIncome, LoanAmount)) +
+	geom_point(aes(color=Credit_History)) +
+	theme_bw()
+```
+From the plot above, we see that there is one applicant with a really high value of ***ApplicantIncome*** with a moderate ***LoanAmount*** value. It is possible that this value was a human error, hence the value is corrected as such:
+```{r}
+max(loan$ApplicantIncome)
+loan$ApplicantIncome[loan$ApplicantIncome == 81000] <- 8100
+```
+
+### Predictive Modeling and Data Insights  
+   
+##### Creating data partition on a 60/40 split.  
+```{r}
+# Spliting data into training and test sets
+inTrain <- createDataPartition(loan$Loan_Status, p = 0.6, list = FALSE) 
+
+# Obtaining training and test Sets
+Train <- loan[ inTrain, ]
+Test  <- loan[-inTrain, ]
+
+XTest <- Test[,1:11]
+YTest <- Test[,12] 
+
+```
+
+  
+#### Building decision tree based on Recursive Partitioning
+```{r}
+rtree_fit <- rpart(Loan_Status ~ ., data=Train, method='class') 
+
+rpart.plot(rtree_fit, extra = 106) 
+# extra = 106: class model with a binary response
+```
+From the decision tree above, we see that the first split occurs on ***Credit_History***. Those who have a credit history of not paying back the loans are split to the left. Here, only 15% of the observations are predicted to be accepted for the loan. This means that people with a credit history of not paying loans back are much more unlikely to be accepted for the loan. 
+
+The tree ends with 9 terminal leaves. There are 4 paths that predict a ***Loan_Status*** of 'No' and 5 that predict a Loan_Status of 'Yes'. The rightmost terminal leaf has a 93% chance of being accepted for the loan with 28% of the observations from the previous node.\
+  
+Note: Target 'Not accepted' = 0 = blue\
+  
+From the output we also see that the variables have this order of importance: ***Credit_History, LoanAmount, ApplicantIncome, Property_Area***, and ***Married***. Hence, these are the variables that has the biggest influence on the target value of the observation. This is valid because the credit history gives a guideline to the bank whether or not the applicant has paid his loans on time in the past. Applicants who have a favorable credit history may be more trustworthy to pay back their loans on time now as well. Next, the loan amount, and applicant income may be correlated as applicants that apply for a large sum must have a reasonable income to be able to pay the loans back. Next, the applicant's property area would influence the amount of loan that they need to buy the land. Lastly, the applicant's marital status seem to be influential in determining if they would pay back a loan on time.\
+
+##### Confusion Matrix for training set
+```{r}
+Predict_train <- predict(rtree_fit, data = Train, type = "class")
+Table1 <- table(Train$Loan_Status, Predict_train)
+confusionMatrix(Table1, positive='Y')
+```
+As shown above, the accuracy of this model is at 83.96%. The model also has a high positive predictive value of 90.91% and high negative predictive value of 68.37%.   
+    
+
+##### Confusion Matrix for test set  
+```{r}
+Predict_test <- predict(rtree_fit, newdata = XTest, type = "class")
+Table2 <- table(YTest, Predict_test)
+confusionMatrix(YTest, Predict_test, positive='Y')
+```
+Finally, the test data set gives the model an accuracy of 77.25%. The model still has a high positive predictive value for the test set at 87.67% but the negative predictive value has dropped to only 53.85%.  
+
+
+### Random Forest
+```{r}
+# Partition dataset
+train = 1:200
+loan.train = loan[train, ]
+loan.test = loan[-train, ]
+
+sqrt(11)
+rf.loan = randomForest(Loan_Status ~ ., data = loan.train, ntree = 100, mtry = 3) 
+print(rf.loan)
+
+# Plots error vs steps for 0, 1 and OOB  
+## 1 = lowest line. OOB = middle line. 0 = top line
+plot(rf.loan) 
+
+# Building confusion matrix for test set
+rf.pred = predict(rf.loan, loan.test)
+Table3 <- table(loan.test$Loan_Status, rf.pred)
+confusionMatrix(Table3, positive = 'Y')
+```
+The mtry (Number of variables randomly sampled as candidates at each split) is set to 3 as there as 11 independent variables in the dataset, $\sqrt 11\approx3$.
+100 trees are chosen to be produced for the model.\
+  
+The accuracy using this package is 80.85%, with a high positive predictive value of 92.21% and a moderate negative predictive value of 54.08%.\
+
+---
+##### To conclude
+  
+In conclusion, here is the summary of the calculated accuracy for the models above:\
+1. rpart test set (recursive partitioning): 77.25%\          
+2. randomForest test set: 80.85%\ 
+
+Only 2 models were tested in this snippet, and the accuracy of both models are similar to each other, with randomForest being slightly more accurate than recursive partitioning decision tree.
